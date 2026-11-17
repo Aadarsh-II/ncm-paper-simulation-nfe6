@@ -1,0 +1,113 @@
+Synthetic stories: vocab 72, L = 48, train 20000 / test 1000
+example: once upon a time there was a red prince named ben . he liked to read in the forest . he was very excited . one day ben found a happy book . the end .
+
+=== Stage 1: multiscale residual VQ-VAE tokenizer =========================
+ladder ℓ = [1, 10, 20, 29, 39, 48] (K=6, Σℓ=147), |V_k|=512, d=128, params=520520
+  vq step     0  loss 5.7930  recon-CE 5.3207  (0s)
+  vq step   500  loss 0.6582  recon-CE 0.5206  (124s)
+  vq step  1000  loss 0.5084  recon-CE 0.4355  (247s)
+  vq step  1499  loss 0.3838  recon-CE 0.3359  (378s)
+Tokenizer (held-out): token recon acc 99.17%  exact-sequence recon 71.80%  mean utilization 82.2%
+  token acc decoding from first k levels: k=1:52.8%  k=2:72.9%  k=3:84.0%  k=4:93.1%  k=5:95.9%  k=6:99.2%
+  per-level utilization: 32% 83% 90% 94% 97% 96%
+
+=== Stage 2: NCM generator ================================================
+NCM params=912256  K=6  α=0.5  corruption 0.60→0.10
+  ncm step     0  loss 7.2229  (1s)
+  ncm step   500  loss 3.9032  (493s)
+  ncm step  1000  loss 3.6440  (983s)
+  ncm step  1500  loss 3.5735  (1483s)
+  ncm step  2000  loss 3.5134  (1966s)
+  ncm step  2500  loss 3.4512  (2434s)
+  ncm step  3000  loss 3.4820  (2927s)
+  ncm step  3500  loss 3.5744  (3414s)
+  ncm step  3999  loss 3.4522  (3900s)
+  NCM training time 3900s
+
+=== Baselines (same width/depth/steps/batch) ==============================
+mdlm params=818376
+  mdlm step     0  loss 5.5221  (0s)
+  mdlm step   500  loss 1.8673  (101s)
+  mdlm step  1000  loss 1.5783  (206s)
+  mdlm step  1500  loss 1.5486  (309s)
+  mdlm step  2000  loss 1.5676  (413s)
+  mdlm step  2500  loss 1.6903  (517s)
+  mdlm step  3000  loss 1.7269  (621s)
+  mdlm step  3500  loss 1.7392  (723s)
+  mdlm step  3999  loss 1.5124  (825s)
+  mdlm training time 825s
+ar params=818376
+  ar step     0  loss 5.5102  (0s)
+  ar step   500  loss 0.8245  (109s)
+  ar step  1000  loss 0.7113  (214s)
+  ar step  1500  loss 0.7144  (315s)
+  ar step  2000  loss 0.6567  (417s)
+  ar step  2500  loss 0.6673  (524s)
+  ar step  3000  loss 0.6757  (630s)
+  ar step  3500  loss 0.6542  (739s)
+  ar step  3999  loss 0.6403  (846s)
+  ar training time 846s
+
+=== Reference model for Gen. PPL (independent AR, 2× steps) ==============
+judge params=818376
+  judge step     0  loss 5.1135  (0s)
+  judge step   500  loss 0.8917  (104s)
+  judge step  1000  loss 0.7203  (208s)
+  judge step  1500  loss 0.6668  (313s)
+  judge step  2000  loss 0.6511  (416s)
+  judge step  2500  loss 0.6424  (517s)
+  judge step  3000  loss 0.6720  (621s)
+  judge step  3500  loss 0.6703  (724s)
+  judge step  4000  loss 0.6477  (824s)
+  judge step  4500  loss 0.6762  (924s)
+  judge step  5000  loss 0.6544  (1026s)
+  judge step  5500  loss 0.6523  (1127s)
+  judge step  6000  loss 0.6699  (1228s)
+  judge step  6500  loss 0.6406  (1329s)
+  judge step  7000  loss 0.6563  (1432s)
+  judge step  7500  loss 0.6911  (1534s)
+  judge step  7999  loss 0.6613  (1634s)
+  judge training time 1634s
+
+=== Results: unconditional generation =====================================
+method               NFE   Gen.PPL↓   story%↑    sent%↑       H  distinct   ms/sample↓
+data                   -      2.001     100.0     100.0   3.004      1.00            -
+NCM (ours)             6     22.265       0.0       8.1   2.820      1.00        10.60
+MDLM T=6               6     15.216       0.0       8.1   2.779      1.00        15.79
+MDLM T=16             16     10.385       0.0       6.3   2.717      1.00        42.78
+MDLM T=48             48      8.058       0.0       4.3   2.683      1.00       126.48
+AR (no KV cache)      48      3.272       0.0      27.8   3.049      1.00       123.74
+story% = whole story exactly grammatical; sent% = well-formed, consistent sentences
+
+=== NCM generation trajectory (decoded after each level, coarse → fine) =
+  level  1 (ℓ= 1): once upon a time there was a red boy named mia . one day very found a the day . he played with the . the day . the . the . all day . the . end .
+  level  2 (ℓ=10): once upon a time there was a little girl named lily . one day to found . one day . found liked to the . the day with the was very run . day .
+  level  3 (ℓ=20): once upon a time there was a kind girl named zoe . she day to found . day day . found liked to found a all played . she . the the . the end . . .
+  level  4 (ℓ=29): once upon a time there was a old girl named zoe . she day to found . one day . found liked to found a all day . she . the the in end . day .
+  level  5 (ℓ=39): once upon a time there was a old girl named zoe . she day emma found . one day . found liked to found to all day . she . the river was .
+  level  6 (ℓ=48): once upon a time there was a old girl named leo . she liked emma found . one day . found found to found a all day . she . . river was .
+
+NCM (ours) samples:
+  - once upon a time there was a red prince named lily . she liked to found a small box . found . with . all house sue played with the very all day . .
+  - once upon a time there was a kind prince named emma . one day sue found a small was . he was very the in the in . the . end end the .
+  - once upon a time there was a shiny boy named emma . she day to scared . old ball . she a with the in .
+
+MDLM T=6 samples:
+  - once upon a time there was a big prince named . one was to found a small key . she liked very the . the day . end . . .
+  - once upon a time there was a big princess named sue . one liked very found a little . she in very sad . day . he .
+  - once upon a time there was a happy princess named anna . one was sue found a old day . she played very read . . day . in . the
+
+MDLM T=16 samples:
+  - once upon a time there was a old boy named mia . one was very found a red day . one was very the . . .
+  - once upon a time there was a shiny girl named . one was very found a little day . she played sad . . end . . the .
+  - once upon a time there was a red boy named jack . one was very found a shiny ball . she was very cup day .
+
+MDLM T=48 samples:
+  - once upon a time there was a small princess named . one day very found a . very end . .
+  - once upon a time there was a kind princess named . one was very found a the book . she played very the the . end the . .
+  - once upon a time there was a shiny boy named . one day lily found a the key . she played very the . the . . .
+
+AR (no KV cache) samples:
+  - once upon a time there was a happy boy named mia . he was very sad . she was very sad forest the river . he liked to run in the end . mia found a shiny key the end . the end .
+  - once upon a time there was a little prince named sue . one day max found a red hat . zoe played with the book all day . leo played with the hat all day . the end .
+  - once upon a time there was a small girl named lily . one day jack found a kind book . she liked to run in the school . sue kite all day zoe all day . she was very excited . the park sad found a shiny hat

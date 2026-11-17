@@ -56,7 +56,7 @@ Baselines (`src/baselines.rs`):
 
 | Task | Paper analogue | Data | Metrics |
 |---|---|---|---|
-| `stories` | TinyStories / LM1B unconditional generation | A synthetic grammar (`src/data/stories.rs`) with long-range constraints: the hero's name is repeated, pronoun and noun agree with gender, and a later sentence must reuse the object found earlier. L = 48. | Gen. PPL (reference AR), **exact grammatical validity %**, unigram entropy H, distinct %, NFE, ms/sample |
+| `stories` | TinyStories / LM1B unconditional generation | A synthetic grammar (`src/data/stories.rs`) with long-range constraints: the hero's name is repeated, pronoun and noun agree with gender, and a later sentence must reuse the object found earlier. L = 48. | Gen. PPL (reference AR), **story%** (whole story exactly grammatical), **sent%** (share of well-formed sentences consistent with the hero and object), unigram entropy H, distinct %, NFE, ms/sample |
 | `sudoku` | Sudoku (S-FLM setup) | Generated in Rust (`src/data/sudoku.rs`): random full grids, puzzles carved down to a target clue count with a unique solution. Easy, medium and hard puzzles have 40, 35 and 30 clues. | Completely solved boards %, blank-cell accuracy %, NFE, ms/puzzle |
 
 The tokenizer report mirrors Table 1 of the paper: held-out token and
@@ -92,7 +92,44 @@ a 10% floor, clipping at 1.0).
 
 See `results/` for full logs of the default runs.
 
-<!-- RESULTS -->
+### Stories (default run: 4,000 steps, K = 6, 4 CPU cores)
+
+Tokenizer (held-out): token reconstruction 99.17%, exact-sequence 71.8%, mean
+codebook utilization 82%. Decoding from only the first k levels gives
+52.8 / 72.9 / 84.0 / 93.1 / 95.9 / 99.2% token accuracy for k = 1…6, so coarse
+levels carry most of the content, as nested dropout intends.
+
+| method | NFE | Gen.PPL ↓ | story% ↑ | sent% ↑ | H | ms/sample ↓ |
+|---|---|---|---|---|---|---|
+| data | – | 2.00 | 100.0 | 100.0 | 3.00 | – |
+| **NCM** | **6** | 22.27 | 0.0 | 8.1 | 2.82 | **10.6** |
+| MDLM T=6 | 6 | 15.22 | 0.0 | 8.1 | 2.78 | 15.8 |
+| MDLM T=16 | 16 | 10.39 | 0.0 | 6.3 | 2.72 | 42.8 |
+| MDLM T=48 | 48 | 8.06 | 0.0 | 4.3 | 2.68 | 126.5 |
+| AR (no KV cache) | 48 | 3.27 | 0.0 | 27.8 | 3.05 | 123.7 |
+
+What reproduces at this scale:
+- **Speed.** NCM is the fastest sampler: about 12× faster than AR or MDLM
+  with T = L, and 1.5× faster than MDLM at the same NFE, because its early
+  passes only process `ℓ_k` positions.
+- **Coarse-to-fine behavior.** The logged trajectory shows level 1 fixing the
+  story skeleton ("once upon a time there was a … named …") and later levels
+  filling in detail.
+- **Matched-NFE comparison.** At NFE = 6, NCM matches MDLM on sentence
+  validity (8.1%) and keeps higher unigram entropy (2.82 vs 2.78).
+
+What does not reproduce at this scale:
+- NCM has the worst Gen. PPL, and no method produces a fully valid story.
+  AR is clearly best on quality. With about 1M parameters and 4k steps every
+  model is badly undertrained; the paper's quality gains appear at about 100M
+  parameters and 50k+ steps.
+- NCM training is about 4.6× slower per step on CPU (3,900 s vs about 830 s),
+  because its training sequence has Σℓ = 147 positions against 48.
+
+An earlier 2,000-step run (`results/stories_2k_steps.txt`) showed the same
+ranking with worse numbers (NCM Gen. PPL 23.8). Sudoku has not been run at
+full length; it takes several hours on CPU.
+
 
 ## Differences from the paper (scale and simplifications)
 

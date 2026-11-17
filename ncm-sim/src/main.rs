@@ -203,7 +203,7 @@ fn run_stories(c: Common) -> Result<()> {
     let train = stories::dataset(c.train_size.unwrap_or(20_000), &vocab, &mut rng);
     let test = stories::dataset(1_000, &vocab, &mut rng);
     let k = c.levels.unwrap_or(6);
-    let steps = c.steps.unwrap_or(2_000);
+    let steps = c.steps.unwrap_or(4_000);
     let n_eval = c.eval.unwrap_or(256);
     println!("Synthetic stories: vocab {}, L = {l}, train {} / test {}", vocab.len(), train.len(), test.len());
     println!("example: {}", vocab.decode(&train[0]));
@@ -313,41 +313,56 @@ fn run_stories(c: Common) -> Result<()> {
             .count() as f64
             / samples.len() as f64
     };
+    let sent_valid = |samples: &[Vec<u32>]| {
+        let (mut ok, mut n) = (0, 0);
+        for s in samples {
+            let w: Vec<&str> = s.iter().map(|&i| vocab.words[i as usize].as_str()).collect();
+            let (a, b) = stories::sentence_validity(&w);
+            ok += a;
+            n += b;
+        }
+        ok as f64 / n.max(1) as f64
+    };
     println!(
-        "{:<18} {:>5} {:>10} {:>9} {:>7} {:>9} {:>12}",
-        "method", "NFE", "Gen.PPL↓", "valid%↑", "H", "distinct", "ms/sample↓"
+        "{:<18} {:>5} {:>10} {:>9} {:>9} {:>7} {:>9} {:>12}",
+        "method", "NFE", "Gen.PPL↓", "story%↑", "sent%↑", "H", "distinct", "ms/sample↓"
     );
     println!(
-        "{:<18} {:>5} {:>10.3} {:>9.1} {:>7.3} {:>9.2} {:>12}",
+        "{:<18} {:>5} {:>10.3} {:>9.1} {:>9.1} {:>7.3} {:>9.2} {:>12}",
         "data",
         "-",
         score(&data_rows)?,
         100.0 * valid(&data_rows),
+        100.0 * sent_valid(&data_rows),
         metrics::unigram_entropy(&data_rows, Some(0)),
         metrics::distinct(&data_rows),
         "-"
     );
     for r in &rows {
         println!(
-            "{:<18} {:>5} {:>10.3} {:>9.1} {:>7.3} {:>9.2} {:>12.2}",
+            "{:<18} {:>5} {:>10.3} {:>9.1} {:>9.1} {:>7.3} {:>9.2} {:>12.2}",
             r.name,
             r.nfe,
             score(&r.samples)?,
             100.0 * valid(&r.samples),
+            100.0 * sent_valid(&r.samples),
             metrics::unigram_entropy(&r.samples, Some(0)),
             metrics::distinct(&r.samples),
             1e3 * r.secs_per_seq
         );
     }
+    println!("story% = whole story exactly grammatical; sent% = well-formed, consistent sentences");
 
     header("NCM generation trajectory (decoded after each level, coarse → fine)");
     let (_, traj) = ncm.generate(&vq, 1, None, 1.0, &mut rng, true)?;
     for (k, out) in traj.iter().enumerate() {
         println!("  level {:2} (ℓ={:2}): {}", k + 1, vq.cfg.ladder[k], vocab.decode(&out[0]));
     }
-    println!("\nNCM samples:");
-    for s in rows[0].samples.iter().take(5) {
-        println!("  - {}", vocab.decode(s));
+    for r in &rows {
+        println!("\n{} samples:", r.name);
+        for s in r.samples.iter().take(3) {
+            println!("  - {}", vocab.decode(s));
+        }
     }
     Ok(())
 }
@@ -504,3 +519,4 @@ fn run_sudoku(c: Common) -> Result<()> {
     println!("final ({}):\n{}", if sudoku::is_solved(&p.clues, &out[0]) { "solved" } else { "not solved" }, sudoku::render(&out[0]));
     Ok(())
 }
+

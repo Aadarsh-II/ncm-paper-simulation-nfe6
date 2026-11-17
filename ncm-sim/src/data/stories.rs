@@ -198,6 +198,49 @@ pub fn is_valid(words: &[&str]) -> bool {
     }
 }
 
+/// Graded validity: the fraction of sentences that are well formed *and*
+/// consistent with the story (hero's name and gender from the intro, the
+/// object introduced by "found"). Padding and the final "the end ." count
+/// like any other sentence. Returns (valid sentences, total sentences).
+pub fn sentence_validity(words: &[&str]) -> (usize, usize) {
+    let words: Vec<&str> = words.iter().copied().filter(|&w| w != "<pad>").collect();
+    let sentences: Vec<&[&str]> = words.split_inclusive(|&w| w == ".").collect();
+    let in_list = |x: &str, l: &[&str]| l.contains(&x);
+    let mut hero: Option<(&str, bool)> = None;
+    let mut obj: Option<&str> = None;
+    let mut ok = 0;
+    for (i, s) in sentences.iter().enumerate() {
+        let valid = match *s {
+            ["once", "upon", "a", "time", "there", "was", "a", adj, kind, "named", name, "."] if i == 0 => {
+                let girl = in_list(kind, GIRL_KIND);
+                let good = in_list(adj, ADJ)
+                    && (girl || in_list(kind, BOY_KIND))
+                    && if girl { in_list(name, GIRLS) } else { in_list(name, BOYS) };
+                if good {
+                    hero = Some((name, girl));
+                }
+                good
+            }
+            [p, "liked", "to", v, "in", "the", pl, "."] => {
+                hero.is_some_and(|(_, g)| *p == if g { "she" } else { "he" }) && in_list(v, VERB) && in_list(pl, PLACE)
+            }
+            [p, "was", "very", e, "."] => hero.is_some_and(|(_, g)| *p == if g { "she" } else { "he" }) && in_list(e, EMO),
+            ["one", "day", n, "found", "a", adj, o, "."] => {
+                let good = obj.is_none() && hero.is_some_and(|(h, _)| h == *n) && in_list(adj, ADJ) && in_list(o, OBJ);
+                if good {
+                    obj = Some(o);
+                }
+                good
+            }
+            [n, "played", "with", "the", o, "all", "day", "."] => hero.is_some_and(|(h, _)| h == *n) && obj == Some(*o),
+            ["the", "end", "."] => i + 1 == sentences.len(),
+            _ => false,
+        };
+        ok += valid as usize;
+    }
+    (ok, sentences.len())
+}
+
 pub fn dataset(n: usize, vocab: &Vocab, rng: &mut StdRng) -> Vec<Vec<u32>> {
     (0..n).map(|_| vocab.encode(&sample_story(rng))).collect()
 }
@@ -218,10 +261,15 @@ mod tests {
             let ids = vocab.encode(&s);
             let back: Vec<&str> = ids.iter().map(|&i| vocab.words[i as usize].as_str()).collect();
             assert!(is_valid(&back));
+            let (ok, n) = sentence_validity(&back);
+            assert_eq!(ok, n, "{back:?}");
         }
         let mut s = sample_story(&mut rng);
         let i = s.iter().position(|w| *w == "named").unwrap() + 1;
         s[i] = if GIRLS.contains(&s[i]) { "tom" } else { "lily" };
         assert!(!is_valid(&s), "gender mismatch must be rejected");
+        let (ok, n) = sentence_validity(&s);
+        // The intro is invalid, so every sentence about the hero fails; only "the end ." survives.
+        assert_eq!((ok, n), (1, n));
     }
 }

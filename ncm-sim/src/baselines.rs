@@ -193,3 +193,28 @@ impl SeqModel {
             .to_vec2()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::SeedableRng;
+
+    /// Both baselines must memorize a tiny dataset and reproduce it greedily.
+    #[test]
+    fn baselines_memorize_and_generate() {
+        let dev = Device::Cpu;
+        let mut rng = StdRng::seed_from_u64(0);
+        let seq: Vec<u32> = vec![3, 1, 4, 1, 5, 9, 2, 6, 5, 3];
+        for kind in [Kind::Ar, Kind::Mdlm] {
+            let cfg = SeqConfig { kind, vocab: 10, prompt_vocab: 1, prefix: 1, len: 10, hidden: 32, depth: 2, heads: 2, dropout: 0.0 };
+            let m = SeqModel::new(cfg, &dev).unwrap();
+            let mut tr = Trainer::new(&m.varmap, 3e-3, 0.0, 0.99, 10, 300).unwrap();
+            let x = Tensor::from_vec(seq.repeat(8), (8, 10), &dev).unwrap();
+            for _ in 0..300 {
+                m.train_step(&x, None, &mut tr, &mut rng).unwrap();
+            }
+            let out = m.generate(2, None, 10, 0.0, &mut rng).unwrap();
+            assert_eq!(out[0], seq, "{kind:?}");
+        }
+    }
+}

@@ -1,0 +1,97 @@
+Synthetic stories: vocab 72, L = 48, train 20000 / test 1000
+example: once upon a time there was a red prince named ben . he liked to read in the forest . he was very excited . one day ben found a happy book . the end .
+
+=== Stage 1: multiscale residual VQ-VAE tokenizer =========================
+ladder ℓ = [1, 10, 20, 29, 39, 48] (K=6, Σℓ=147), |V_k|=512, d=128, params=520520
+  vq step     0  loss 5.4647  recon-CE 4.9987  (0s)
+  vq step   250  loss 0.8339  recon-CE 0.6626  (64s)
+  vq step   500  loss 0.6337  recon-CE 0.5041  (127s)
+  vq step   750  loss 0.6074  recon-CE 0.5003  (188s)
+  vq step  1000  loss 0.5174  recon-CE 0.4511  (247s)
+  vq step  1250  loss 0.4498  recon-CE 0.3945  (307s)
+  vq step  1499  loss 0.5449  recon-CE 0.4810  (367s)
+Tokenizer (held-out): token recon acc 99.23%  exact-sequence recon 77.00%  mean utilization 82.2%
+  token acc decoding from first k levels: k=1:55.3%  k=2:71.4%  k=3:84.4%  k=4:92.7%  k=5:96.0%  k=6:99.2%
+  per-level utilization: 36% 81% 91% 92% 96% 98%
+
+=== Stage 2: NCM generator ================================================
+NCM params=912256  K=6  α=0.5  corruption 0.60→0.10
+  ncm step     0  loss 7.2930  (1s)
+  ncm step   250  loss 4.5764  (233s)
+  ncm step   500  loss 3.9518  (457s)
+  ncm step   750  loss 3.7448  (692s)
+  ncm step  1000  loss 3.7285  (937s)
+  ncm step  1250  loss 3.5336  (1184s)
+  ncm step  1500  loss 3.7559  (1428s)
+  ncm step  1750  loss 3.6473  (1668s)
+  ncm step  1999  loss 3.6462  (1911s)
+  NCM training time 1911s
+
+=== Baselines (same width/depth/steps/batch) ==============================
+mdlm params=818376
+  mdlm step     0  loss 5.7382  (0s)
+  mdlm step   250  loss 2.3215  (53s)
+  mdlm step   500  loss 2.0881  (104s)
+  mdlm step   750  loss 1.8473  (155s)
+  mdlm step  1000  loss 1.8327  (204s)
+  mdlm step  1250  loss 1.6700  (255s)
+  mdlm step  1500  loss 1.9176  (304s)
+  mdlm step  1750  loss 1.6136  (358s)
+  mdlm step  1999  loss 1.6393  (411s)
+  mdlm training time 411s
+ar params=818376
+  ar step     0  loss 5.0796  (0s)
+  ar step   250  loss 1.1202  (52s)
+  ar step   500  loss 0.7558  (105s)
+  ar step   750  loss 0.7006  (156s)
+  ar step  1000  loss 0.6632  (207s)
+  ar step  1250  loss 0.6885  (260s)
+  ar step  1500  loss 0.7271  (311s)
+  ar step  1750  loss 0.6430  (362s)
+  ar step  1999  loss 0.6452  (410s)
+  ar training time 410s
+
+=== Reference model for Gen. PPL (independent AR, 2× steps) ==============
+judge params=818376
+  judge step     0  loss 5.4776  (0s)
+  judge step   250  loss 1.3602  (50s)
+  judge step   500  loss 0.8047  (100s)
+  judge step   750  loss 0.7492  (153s)
+  judge step  1000  loss 0.6838  (205s)
+  judge step  1250  loss 0.6800  (256s)
+  judge step  1500  loss 0.6509  (309s)
+  judge step  1750  loss 0.6540  (361s)
+  judge step  2000  loss 0.6787  (415s)
+  judge step  2250  loss 0.6588  (468s)
+  judge step  2500  loss 0.6301  (524s)
+  judge step  2750  loss 0.6130  (578s)
+  judge step  3000  loss 0.6138  (632s)
+  judge step  3250  loss 0.6439  (685s)
+  judge step  3500  loss 0.6732  (736s)
+  judge step  3750  loss 0.6776  (788s)
+  judge step  3999  loss 0.6655  (839s)
+  judge training time 839s
+
+=== Results: unconditional generation =====================================
+method               NFE   Gen.PPL↓   valid%↑       H  distinct   ms/sample↓
+data                   -      1.997     100.0   3.004      1.00            -
+NCM (ours)             6     23.784       0.0   2.840      1.00        11.49
+MDLM T=6               6      3.719       0.0   2.652      1.00        15.41
+MDLM T=16             16      3.123       0.0   2.514      1.00        41.19
+MDLM T=48             48      3.119       0.0   2.441      0.91       123.27
+AR (no KV cache)      48      3.734       0.0   3.002      1.00       114.53
+
+=== NCM generation trajectory (decoded after each level, coarse → fine) =
+  level  1 (ℓ= 1): once upon a time there was a shiny girl named zoe . one day very found a the day . she was very the . all day . the end very day . . .
+  level  2 (ℓ=10): once upon a time there was a little girl named anna . one day very found . house . she was very the . the end . the .
+  level  3 (ℓ=20): once upon a time there was a little girl named anna . one day very found . the cup . she played the the . the end . the .
+  level  4 (ℓ=29): once upon a time there was a old girl named anna . one day very kind cup . he was the the . the end . end .
+  level  5 (ℓ=39): once upon a time there was a old girl named end . one day very kind cup . he in the the . the day . she end . the
+  level  6 (ℓ=48): once upon a time there was a little girl named . . one day very kind school . she was was the . the day . she end . the
+
+NCM samples:
+  - once upon a time there was a happy princess named anna . he day very found a old day . he played very . all day . end played to the the day the end to the . all
+  - once upon a time there was a happy princess named mia . one day very play . he kite . she was to in the house . the .
+  - once upon a time there was a small boy named sue . she liked sam found in the the . he to the box the day . the end the the the
+  - once upon a time there was a kind prince named emma . one day to dance in the forest . . she liked . the end the run very the . . .
+  - once upon a time there was a old girl named emma . one day emma found a she school . she was old found . found day . very . end . all day

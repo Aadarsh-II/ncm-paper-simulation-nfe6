@@ -84,6 +84,23 @@ cargo test --release
 ./target/release/ncm-sim stories --levels 8 --steps 4000 --alpha 1.0
 ```
 
+### GPU
+
+GPU support uses candle's CUDA or Metal backend, chosen at build time:
+
+```bash
+cargo build --release --features cuda    # NVIDIA (needs the CUDA toolkit / nvcc)
+cargo build --release --features cudnn   # NVIDIA with cuDNN
+cargo build --release --features metal   # Apple silicon
+./target/release/ncm-sim stories                 # --device auto: GPU if present, else CPU
+./target/release/ncm-sim sudoku --device cuda --gpu 1
+```
+
+The default build is CPU-only. `--device auto` falls back to the CPU when no
+GPU backend is compiled in or no GPU is found; `--device cuda` or `metal`
+fails with an error instead. At these model sizes a GPU mainly pays off with
+a larger `--batch`, `--hidden` and `--depth`.
+
 All three generators (NCM, MDLM and AR) share the hidden width, depth,
 batch size, step count and learning-rate schedule (AdamW, warmup, cosine to
 a 10% floor, clipping at 1.0).

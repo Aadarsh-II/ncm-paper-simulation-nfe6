@@ -20,7 +20,7 @@ mod vqvae;
 use std::time::Instant;
 
 use candle_core::{Device, Result, Tensor};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
@@ -110,6 +110,46 @@ struct Common {
     /// Log every N steps.
     #[arg(long, default_value_t = 100)]
     log_every: usize,
+    /// Compute device: auto (GPU if built with one and available, else CPU), cpu, cuda, metal.
+    #[arg(long, value_enum, default_value_t = DeviceArg::Auto)]
+    device: DeviceArg,
+    /// GPU ordinal for cuda/metal.
+    #[arg(long, default_value_t = 0)]
+    gpu: usize,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum DeviceArg {
+    Auto,
+    Cpu,
+    Cuda,
+    Metal,
+}
+
+/// Pick the compute device. GPU backends exist only when the binary was
+/// built with `--features cuda` (or `cudnn`) or `--features metal`.
+fn pick_device(c: &Common) -> Result<Device> {
+    let dev = match c.device {
+        DeviceArg::Cpu => Device::Cpu,
+        DeviceArg::Cuda => Device::new_cuda(c.gpu)?,
+        DeviceArg::Metal => Device::new_metal(c.gpu)?,
+        DeviceArg::Auto => {
+            if candle_core::utils::cuda_is_available() {
+                Device::new_cuda(c.gpu)?
+            } else if candle_core::utils::metal_is_available() {
+                Device::new_metal(c.gpu)?
+            } else {
+                Device::Cpu
+            }
+        }
+    };
+    let name = match &dev {
+        Device::Cpu => format!("CPU ({} threads)", candle_core::utils::get_num_threads()),
+        Device::Cuda(_) => format!("CUDA GPU {}", c.gpu),
+        Device::Metal(_) => format!("Metal GPU {}", c.gpu),
+    };
+    println!("device: {name}");
+    Ok(dev)
 }
 
 fn main() -> Result<()> {
@@ -196,7 +236,7 @@ struct GenRow {
 }
 
 fn run_stories(c: Common) -> Result<()> {
-    let dev = Device::Cpu;
+    let dev = pick_device(&c)?;
     let mut rng = StdRng::seed_from_u64(c.seed);
     let vocab = stories::Vocab::new();
     let l = stories::LEN;
@@ -385,7 +425,7 @@ fn ncm_config(c: &Common, prefix: usize) -> NcmConfig {
 // ---------------------------------------------------------------------------
 
 fn run_sudoku(c: Common) -> Result<()> {
-    let dev = Device::Cpu;
+    let dev = pick_device(&c)?;
     let mut rng = StdRng::seed_from_u64(c.seed);
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
     let n_train = c.train_size.unwrap_or(20_000);

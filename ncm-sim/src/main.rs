@@ -264,7 +264,7 @@ fn run_stories(c: Common) -> Result<()> {
     let vq = train_tokenizer(vq_cfg, &train, &test, &c, c.vq_steps.unwrap_or(1_500), &dev, &mut rng)?;
 
     header("Stage 2: NCM generator");
-    let ncm = Ncm::new(ncm_config(&c, 1), &vq, &dev)?;
+    let ncm = Ncm::new(ncm_config(&c, 1, false), &vq, &dev)?;
     println!(
         "NCM params={}  K={}  α={}  corruption {:.2}→{:.2}",
         param_count(&ncm.varmap),
@@ -290,6 +290,7 @@ fn run_stories(c: Common) -> Result<()> {
         depth: c.depth,
         heads: c.heads,
         dropout: 0.1,
+        aligned_prefix: false,
     };
     let train_seq = |m: &SeqModel, name: &str, steps: usize, rng: &mut StdRng| -> Result<()> {
         let mut tr = Trainer::new(&m.varmap, c.lr, 0.1, 0.95, steps / 20 + 1, steps)?;
@@ -407,8 +408,9 @@ fn run_stories(c: Common) -> Result<()> {
     Ok(())
 }
 
-fn ncm_config(c: &Common, prefix: usize) -> NcmConfig {
+fn ncm_config(c: &Common, prefix: usize, aligned_prefix: bool) -> NcmConfig {
     NcmConfig {
+        aligned_prefix,
         hidden: c.hidden,
         depth: c.depth,
         heads: c.heads,
@@ -473,7 +475,7 @@ fn run_sudoku(c: Common) -> Result<()> {
     };
 
     header("Stage 2: NCM generator (prefix = puzzle)");
-    let ncm = Ncm::new(ncm_config(&c, sudoku::CELLS), &vq, &dev)?;
+    let ncm = Ncm::new(ncm_config(&c, sudoku::CELLS, true), &vq, &dev)?;
     println!("NCM params={}  K={}", param_count(&ncm.varmap), ncm.k());
     let mut tr = Trainer::new(&ncm.varmap, c.lr, 0.1, 0.95, steps / 20 + 1, steps)?;
     train_loop("ncm", steps, c.log_every, |_| {
@@ -520,6 +522,7 @@ fn run_sudoku(c: Common) -> Result<()> {
             depth: c.depth,
             heads: c.heads,
             dropout: 0.1,
+            aligned_prefix: true,
         };
         for kind in [Kind::Mdlm, Kind::Ar] {
             let name = if kind == Kind::Ar { "ar" } else { "mdlm" };

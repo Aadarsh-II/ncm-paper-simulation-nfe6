@@ -107,46 +107,20 @@ a 10% floor, clipping at 1.0).
 
 ## Results
 
-See `results/` for full logs of the default runs.
+**The earlier results were invalid and are being re-run.** Up to commit
+`7a4d950`, no model actually trained below its output head. candle's
+`LayerNorm` sends contiguous inputs to a fused kernel applied with
+`apply_op3_no_bwd`, and `softmax_last_dim` is applied with `apply_op1_no_bwd`,
+so the backward pass stopped at the final layer norm. Every transformer
+layer and embedding kept its random initialization: each model was a linear
+readout over random features. `src/nn.rs` now uses differentiable versions,
+and `nn::tests::gradients_reach_every_parameter` guards against a repeat.
 
-### Stories (default run: 4,000 steps, K = 6, 4 CPU cores)
+After the fix, a 2-layer AR or MDLM model learns to copy its prompt in about
+200 steps (loss 2.2 → 0.0003). Before the fix, neither could.
 
-Tokenizer (held-out): token reconstruction 99.17%, exact-sequence 71.8%, mean
-codebook utilization 82%. Decoding from only the first k levels gives
-52.8 / 72.9 / 84.0 / 93.1 / 95.9 / 99.2% token accuracy for k = 1…6, so coarse
-levels carry most of the content, as nested dropout intends.
-
-| method | NFE | Gen.PPL ↓ | story% ↑ | sent% ↑ | H | ms/sample ↓ |
-|---|---|---|---|---|---|---|
-| data | – | 2.00 | 100.0 | 100.0 | 3.00 | – |
-| **NCM** | **6** | 22.27 | 0.0 | 8.1 | 2.82 | **10.6** |
-| MDLM T=6 | 6 | 15.22 | 0.0 | 8.1 | 2.78 | 15.8 |
-| MDLM T=16 | 16 | 10.39 | 0.0 | 6.3 | 2.72 | 42.8 |
-| MDLM T=48 | 48 | 8.06 | 0.0 | 4.3 | 2.68 | 126.5 |
-| AR (no KV cache) | 48 | 3.27 | 0.0 | 27.8 | 3.05 | 123.7 |
-
-What reproduces at this scale:
-- **Speed.** NCM is the fastest sampler: about 12× faster than AR or MDLM
-  with T = L, and 1.5× faster than MDLM at the same NFE, because its early
-  passes only process `ℓ_k` positions.
-- **Coarse-to-fine behavior.** The logged trajectory shows level 1 fixing the
-  story skeleton ("once upon a time there was a … named …") and later levels
-  filling in detail.
-- **Matched-NFE comparison.** At NFE = 6, NCM matches MDLM on sentence
-  validity (8.1%) and keeps higher unigram entropy (2.82 vs 2.78).
-
-What does not reproduce at this scale:
-- NCM has the worst Gen. PPL, and no method produces a fully valid story.
-  AR is clearly best on quality. With about 1M parameters and 4k steps every
-  model is badly undertrained; the paper's quality gains appear at about 100M
-  parameters and 50k+ steps.
-- NCM training is about 4.6× slower per step on CPU (3,900 s vs about 830 s),
-  because its training sequence has Σℓ = 147 positions against 48.
-
-An earlier 2,000-step run (`results/stories_2k_steps.txt`) showed the same
-ranking with worse numbers (NCM Gen. PPL 23.8). Sudoku has not been run at
-full length; it takes several hours on CPU.
-
+The old logs are kept in `results/pre-fix/` for reference only. New results
+will be added here once the re-runs finish.
 
 ## Differences from the paper (scale and simplifications)
 

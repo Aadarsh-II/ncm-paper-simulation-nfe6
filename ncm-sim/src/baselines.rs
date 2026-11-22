@@ -32,6 +32,10 @@ pub struct SeqConfig {
     pub depth: usize,
     pub heads: usize,
     pub dropout: f32,
+    /// Prefix and target are aligned cell by cell (needs prefix == len, e.g. a
+    /// Sudoku puzzle and its solution): prefix cell i and target cell i share a
+    /// position embedding, and a segment embedding tells them apart.
+    pub aligned_prefix: bool,
 }
 
 pub struct SeqModel {
@@ -40,6 +44,8 @@ pub struct SeqModel {
     tok_emb: Embedding,
     prompt_emb: Embedding,
     pos_emb: Embedding,
+    seg_emb: Option<Embedding>,
+    pos_ids: Tensor,
     body: Transformer,
     head: Linear,
     mask: Tensor,
@@ -55,11 +61,17 @@ impl SeqModel {
             Kind::Ar => mask_from_fn(n, dev, |i, j| j < p || (i >= p && j <= i))?,
             Kind::Mdlm => mask_from_fn(n, dev, |_, _| true)?,
         };
+        assert!(!cfg.aligned_prefix || p == cfg.len, "aligned_prefix needs prefix == len");
+        let pos_ids: Vec<u32> = if cfg.aligned_prefix { (0..p).chain(0..cfg.len).map(|i| i as u32).collect() } else { (0..n as u32).collect() };
+        let pos_ids = Tensor::from_vec(pos_ids, n, dev)?;
+        let seg_emb = if cfg.aligned_prefix { Some(embedding(2, cfg.hidden, vb.pp("seg_emb"))?) } else { None };
         Ok(Self {
             // Extra id = BOS (AR) or MASK (MDLM).
             tok_emb: embedding(cfg.vocab + 1, cfg.hidden, vb.pp("tok_emb"))?,
             prompt_emb: embedding(cfg.prompt_vocab.max(1), cfg.hidden, vb.pp("prompt_emb"))?,
             pos_emb: embedding(n, cfg.hidden, vb.pp("pos_emb"))?,
+            seg_emb,
+            pos_ids,
             body: Transformer::new(cfg.hidden, cfg.depth, cfg.heads, cfg.dropout, vb.pp("body"))?,
             head: linear(cfg.hidden, cfg.vocab, vb.pp("head"))?,
             mask,
@@ -82,8 +94,11 @@ impl SeqModel {
             None => self.prompt_emb.forward(&Tensor::zeros((b, p), DType::U32, &self.dev)?)?,
         };
         let x = Tensor::cat(&[pre, self.tok_emb.forward(tgt_in)?], 1)?;
-        let n = p + self.cfg.len;
-        let pos = self.pos_emb.forward(&Tensor::arange(0u32, n as u32, &self.dev)?)?;
+        let mut pos = self.pos_emb.forward(&self.pos_ids)?;
+        if let Some(seg) = &self.seg_emb {
+            let ids: Vec<u32> = (0..p + self.cfg.len).map(|i| (i >= p) as u32).collect();
+            pos = (pos + seg.forward(&Tensor::from_vec(ids, p + self.cfg.len, &self.dev)?)?)?;
+        }
         let h = self.body.forward(&x.broadcast_add(&pos)?, Some(&self.mask), train)?;
         self.head.forward(&h.narrow(1, p, self.cfg.len)?)
     }
@@ -206,7 +221,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(0);
         let seq: Vec<u32> = vec![3, 1, 4, 1, 5, 9, 2, 6, 5, 3];
         for kind in [Kind::Ar, Kind::Mdlm] {
-            let cfg = SeqConfig { kind, vocab: 10, prompt_vocab: 1, prefix: 1, len: 10, hidden: 32, depth: 2, heads: 2, dropout: 0.0 };
+            let cfg = SeqConfig { kind, vocab: 10, prompt_vocab: 1, prefix: 1, len: 10, hidden: 32, depth: 2, heads: 2, dropout: 0.0, aligned_prefix: false };
             let m = SeqModel::new(cfg, &dev).unwrap();
             let mut tr = Trainer::new(&m.varmap, 3e-3, 0.0, 0.99, 10, 300).unwrap();
             let x = Tensor::from_vec(seq.repeat(8), (8, 10), &dev).unwrap();

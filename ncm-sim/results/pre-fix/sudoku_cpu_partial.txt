@@ -1,0 +1,20 @@
+
+=== Data ==================================================================
+20000 training puzzles (30–45 clues, unique solutions) + 100×3 test puzzles in 0.8s
+
+=== Stage 1: multiscale residual VQ-VAE tokenizer =========================
+ladder ℓ = [1, 12, 24, 35, 47, 58, 70, 81] (K=8, Σℓ=328), |V_k|=16, d=64, params=89866
+  vq step     0  loss 4.9685  recon-CE 3.1615  (0s)
+  vq step   500  loss 1.6007  recon-CE 1.3031  (96s)
+  vq step   999  loss 1.1144  recon-CE 0.9515  (195s)
+Tokenizer (held-out): token recon acc 98.56%  exact-sequence recon 29.67%  mean utilization 88.3%
+  token acc decoding from first k levels: k=1:11.7%  k=2:12.0%  k=3:13.4%  k=4:17.8%  k=5:28.7%  k=6:41.9%  k=7:49.7%  k=8:98.6%
+  per-level utilization: 6% 100% 100% 100% 100% 100% 100% 100%
+
+=== Stage 2: NCM generator (prefix = puzzle) ==============================
+NCM params=865552  K=8
+  ncm step     0  loss 3.6223  (3s)
+  ncm step   500  loss 2.5797  (1434s)
+  ncm step  1000  loss 2.5663  (2808s)
+  ncm step  1500  loss 2.5668  (4156s)
+  ncm step  2000  loss 2.5718  (5515s)

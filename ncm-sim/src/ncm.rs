@@ -33,6 +33,12 @@ pub struct NcmConfig {
     /// to `corrupt_min` at level K-1 (level K is never used as conditioning).
     pub corrupt_max: f64,
     pub corrupt_min: f64,
+    /// The prompt is aligned cell by cell with the output (prefix == L, e.g.
+    /// Sudoku). Prefix cell i then gets cell embedding E_i, and level k's
+    /// positions get Down_k(E), the cell embeddings area-resized to ℓ_k with
+    /// the tokenizer's own resize operator, so every level knows which prompt
+    /// cells it covers. Otherwise positions are learned per sequence slot.
+    pub aligned_prefix: bool,
 }
 
 pub struct Ncm {
@@ -67,6 +73,7 @@ impl Ncm {
         }
         let n = *offsets.last().unwrap();
         let h = cfg.hidden;
+        assert!(!cfg.aligned_prefix || p == *ladder.last().unwrap(), "aligned_prefix needs prefix == L");
 
         // Block id per position: 0 = prefix, k+1 = level k.
         let block_of: Vec<usize> = (0..n)
@@ -110,6 +117,17 @@ impl Ncm {
         self.ladder.len()
     }
 
+    /// Position embeddings of level k (ℓ_k rows).
+    fn level_pos(&self, vq: &VqVae, k: usize) -> Result<Tensor> {
+        if self.cfg.aligned_prefix {
+            let cells = self.pos_emb.embeddings().narrow(0, 0, self.cfg.prefix)?;
+            vq.rs.down[k].matmul(&cells)
+        } else {
+            let l = self.ladder[k];
+            self.pos_emb.forward(&Tensor::arange(self.offsets[k] as u32, (self.offsets[k] + l) as u32, &self.dev)?)
+        }
+    }
+
     /// Prefix states: prompt tokens embedded with the frozen VQ-VAE table, or BOS.
     fn prefix_states(&self, vq: &VqVae, prompt: Option<&Tensor>, b: usize) -> Result<Tensor> {
         let p = self.cfg.prefix;
@@ -125,11 +143,9 @@ impl Ncm {
 
     /// Inputs of level k from the cumulative reconstruction of levels < k.
     fn level_inputs(&self, vq: &VqVae, k: usize, zprev: &Tensor) -> Result<Tensor> {
-        let l = self.ladder[k];
         let x = vq.rs.down[k].broadcast_matmul(&zprev.detach())?;
         let x = self.in_proj.forward(&x)?;
-        let ids = Tensor::arange(self.offsets[k] as u32, (self.offsets[k] + l) as u32, &self.dev)?;
-        let pos = self.pos_emb.forward(&ids)?;
+        let pos = self.level_pos(vq, k)?;
         let lvl = self.level_emb.forward(&Tensor::new(&[k as u32], &self.dev)?)?;
         x.broadcast_add(&pos)?.broadcast_add(&lvl)
     }
